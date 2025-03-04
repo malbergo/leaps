@@ -1,0 +1,188 @@
+import torch
+import torch.nn as nn
+from torch.func import vmap, jacfwd
+from dataclasses import dataclass
+
+import numpy as np
+
+from src.modules.rhot import Ising
+
+
+
+
+@dataclass
+class DiscreteJarzynskiIntegrator:
+    dpath: Ising
+    eps: torch.tensor
+    ts: torch.tensor
+    Qt_net: nn.Module = None,
+    transport: bool = False
+    n_save: int  = 10
+    resample: bool = False
+    resample_thres: float = 0.7
+    turn_off_jarz: bool = False
+    
+
+    def __post_init__(self) -> None:
+        """Initialize time grid and step size."""
+        self.n_step = len(self.ts) - 1
+        assert self.n_save > 0 ## will always save the first sample
+        assert self.n_step % self.n_save == 0, f"{self.n_step} is not divisible by {self.n_save}"
+        self.save_freq = self.n_step // self.n_save
+        
+        
+    def ess(self, At):
+        return torch.mean(torch.exp(At))**2 / torch.mean(torch.exp(2*At))
+        
+    def _single_step_glauber(self, cfg, t, dt):
+        """
+        Perform a Galuber update on a single spin configuration (cfg).
+
+        cfg : (L, L)
+        J   : coupling constant
+        beta: inverse temperature (1 / k_B T))
+
+        Returns
+        new_cfg:  (L, L)
+        """
+        
+        J, mu, B, beta = self.dpath.setup_params(t)
+    
+        L = cfg.shape[0]
+        
+        row = np.random.randint(0, L, ())
+        col = np.random.randint(0, L, ())
+        spins = cfg[row, col]
+    
+        # neighbors
+        up_row = (row - 1) % L
+        down_row = (row + 1) % L
+        left_col = (col - 1) % L
+        right_col = (col + 1) % L
+
+        # local neighbor interaction
+        neighbor_sum = cfg[up_row, col] + cfg[down_row, col] + cfg[row, left_col] + cfg[row, right_col]
+        local_energy = J * neighbor_sum + mu * B
+        delta_E = 2.0 * spins * local_energy
+    
+        acc = torch.exp(-beta * delta_E)
+        acc = torch.minimum(acc, torch.tensor(1)) 
+
+
+        flip =  (torch.rand(1, device=cfg.device) < acc)
+        # minus or plus 1 depending on if flip is true or flase respectively
+        pm1 = torch.where(flip, torch.tensor(-1.0, device=cfg.device), torch.tensor(1.0, device=cfg.device))
+        cfg[row, col] = pm1 * cfg[row, col] 
+
+        return cfg
+
+    def metropolis_step(self, cfgs, t, dt):
+        """
+        Perform a Galuber update on a batch of  spin configurations (cfgs).
+        """
+        bs = cfgs.shape[0]
+        return vmap(self._single_step_glauber, in_dims = (0, 0, 0),
+                    out_dims=(0), randomness='different')(cfgs, t, dt)
+
+
+
+#     def metropolis_step(self, sigma, t, dt):
+
+#         # Assuming constant jump rate
+#         jump_threshold = torch.exp(-torch.tensor(self.eps * dt)).to(self.device)
+#         jump_mask = (torch.rand(size=(sigma.shape[0],)).to(self.device) > jump_threshold)
+
+
+#         # Sample proposal distribution (go up or down with change 40% each):
+#         # unif_samples = torch.rand_like(sigma.float())
+#         flip_mask = (unif_samples <= 0.5)
+#         sigma_proposal = deepcopy(sigma)
+#         sigma_proposal[flip_mask] = -sigma_proposal[flip_mask]
+        
+#         new_ll = torch.exp(-self.dpath.Ut(sigma_proposal, t))
+#         old_ll = torch.exp(-self.dpath.Ut(sigma, t))
+#         # new_ll = self.dpath.pt(sigma_proposal,t)
+#         # old_ll = self.dpath.pt(sigma,t)
+#         ll_ratio = new_ll/old_ll
+#         accept_mask = (torch.rand_like(ll_ratio) <= ll_ratio)
+        
+#         # print("Acc percentage:", accept_mask.float().mean())
+
+#         # Stay at points which are not accepted by Metropolis step
+#         sigma_proposal[~(accept_mask & jump_mask)] = sigma[~(accept_mask & jump_mask)]
+
+#         return sigma_proposal
+        
+    def sigma_step(self, sigma, t, dt):
+        L = sigma.shape[-1]
+        if self.transport:
+            with torch.no_grad():
+                sigma_new = self.Qt_net.sample_next_step(sigma, t, dt)
+        else:
+            sigma_new = sigma
+        # return self.metropolis_step(sigma_new,t,dt), None
+        return sigma_new, None
+        
+    def A_step(self, sigma, t, A, dt):
+        L = sigma.shape[-1]
+        if self.transport and not self.turn_off_jarz:   
+            _, delta_H_neighbors = self.dpath.Ut(sigma, t)
+            lh_ratios = torch.exp(-delta_H_neighbors)
+            with torch.no_grad():
+                jarz_corrector = self.Qt_net.get_jarzinsky_corrector(sigma, t, lh_ratios)
+            return A - dt * self.dpath.dtUt(sigma,t)[0] - dt * jarz_corrector
+        else:
+            return A - dt * self.dpath.dtUt(sigma,t)[0]
+    
+    def rollout(self, sigma_init):
+        """
+        Performs the rollout
+        """
+        bs = sigma_init.shape[0]
+        sigma_stack = torch.zeros((self.n_save +1, *sigma_init.shape)).to(sigma_init)
+        As = torch.zeros((self.n_save +1, bs)).to(sigma_init)
+
+        # initialize weights A to zero
+        A = torch.zeros(bs).to(sigma_init)
+        sigma = sigma_init
+        
+        sigma_stack[0] = sigma_init.detach()
+        As[0] = A
+        
+        save_ind = 1
+        resample_count = 0
+        for i, t in enumerate(self.ts[:-1]):
+            dt = (self.ts[i+1] - self.ts[i]).repeat(len(sigma)).to(sigma_init) ### assumes first element in self.ts is 0
+            t = t.repeat(len(sigma)).to(sigma_init) #.requires_grad_(True)
+            sigma = sigma.to(sigma_init)
+            A = A.to(sigma_init)
+            sigma_new, _ = self.sigma_step(sigma, t, dt)
+            A_new = self.A_step(sigma, t, A, dt)
+
+            t_new = self.ts[i+1].repeat(len(sigma)) #.requires_grad_(True)
+
+            
+            if self.ess(A_new.double()) < self.resample_thres and self.resample:
+                # raise NotImplementedError()
+                resample_count +=1
+                print("i:", i, "resample cout:", resample_count)
+                weights = torch.softmax(A_new, dim = 0)
+                indices = systematic_resample(weights)
+                sigma_new   = torch.clone(sigma_new[indices])
+                A_new   = torch.zeros(len(weights)).to(sigma_init)
+                
+            if (i + 1) % self.save_freq == 0:            
+                sigma_stack[save_ind] = torch.clone(sigma_new.detach())
+                As[save_ind] = torch.clone(A_new.detach())
+                save_ind += 1
+
+            sigma = sigma.detach()
+            del sigma
+            sigma = sigma_new.detach()
+            A = A_new.detach()
+            del sigma_new, A_new
+
+        sigma_stack[-1] = sigma.detach()
+        As[-1] = A.detach()
+
+        return sigma_stack, As
