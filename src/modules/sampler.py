@@ -2,17 +2,18 @@ import torch
 import torch.nn as nn
 from torch.func import vmap, jacfwd
 from dataclasses import dataclass
+from typing import Union
 
 import numpy as np
 
-from src.modules.rhot import Ising
+from src.modules.rhot import Ising, Potts
 
 
 
 
 @dataclass
 class DiscreteJarzynskiIntegrator:
-    dpath: Ising
+    dpath: Union[Ising,Potts]
     eps: torch.tensor
     ts: torch.tensor
     Qt_net: nn.Module = None,
@@ -21,7 +22,8 @@ class DiscreteJarzynskiIntegrator:
     resample: bool = False
     resample_thres: float = 0.7
     turn_off_jarz: bool = False
-    
+    model_class: str = "ising"
+    n_mcmc_per_net: int = 1
 
     def __post_init__(self) -> None:
         """Initialize time grid and step size."""
@@ -80,38 +82,14 @@ class DiscreteJarzynskiIntegrator:
         """
         Perform a Galuber update on a batch of  spin configurations (cfgs).
         """
-        bs = cfgs.shape[0]
-        return vmap(self._single_step_glauber, in_dims = (0, 0, 0),
-                    out_dims=(0), randomness='different')(cfgs, t, dt)
-
-
-
-#     def metropolis_step(self, sigma, t, dt):
-
-#         # Assuming constant jump rate
-#         jump_threshold = torch.exp(-torch.tensor(self.eps * dt)).to(self.device)
-#         jump_mask = (torch.rand(size=(sigma.shape[0],)).to(self.device) > jump_threshold)
-
-
-#         # Sample proposal distribution (go up or down with change 40% each):
-#         # unif_samples = torch.rand_like(sigma.float())
-#         flip_mask = (unif_samples <= 0.5)
-#         sigma_proposal = deepcopy(sigma)
-#         sigma_proposal[flip_mask] = -sigma_proposal[flip_mask]
-        
-#         new_ll = torch.exp(-self.dpath.Ut(sigma_proposal, t))
-#         old_ll = torch.exp(-self.dpath.Ut(sigma, t))
-#         # new_ll = self.dpath.pt(sigma_proposal,t)
-#         # old_ll = self.dpath.pt(sigma,t)
-#         ll_ratio = new_ll/old_ll
-#         accept_mask = (torch.rand_like(ll_ratio) <= ll_ratio)
-        
-#         # print("Acc percentage:", accept_mask.float().mean())
-
-#         # Stay at points which are not accepted by Metropolis step
-#         sigma_proposal[~(accept_mask & jump_mask)] = sigma[~(accept_mask & jump_mask)]
-
-#         return sigma_proposal
+        if self.model_class == "ising":
+            bs = cfgs.shape[0]
+            return vmap(self._single_step_glauber, in_dims = (0, 0, 0),
+                        out_dims=(0), randomness='different')(cfgs, t, dt)
+        elif self.model_class == "potts":
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
         
     def sigma_step(self, sigma, t, dt):
         L = sigma.shape[-1]
@@ -120,7 +98,10 @@ class DiscreteJarzynskiIntegrator:
                 sigma_new = self.Qt_net.sample_next_step(sigma, t, dt)
         else:
             sigma_new = sigma
-        # return self.metropolis_step(sigma_new,t,dt), None
+            
+        for _ in range(self.n_mcmc_per_net):
+            sigma_new = self.metropolis_step(sigma_new,t,dt)
+
         return sigma_new, None
         
     def A_step(self, sigma, t, A, dt):
@@ -152,8 +133,8 @@ class DiscreteJarzynskiIntegrator:
         save_ind = 1
         resample_count = 0
         for i, t in enumerate(self.ts[:-1]):
-            dt = (self.ts[i+1] - self.ts[i]).repeat(len(sigma)).to(sigma_init) ### assumes first element in self.ts is 0
-            t = t.repeat(len(sigma)).to(sigma_init) #.requires_grad_(True)
+            dt = (self.ts[i+1] - self.ts[i]).repeat(len(sigma)).to(sigma_init.device) ### assumes first element in self.ts is 0
+            t = t.repeat(len(sigma)).to(sigma_init.device) #.requires_grad_(True)
             sigma = sigma.to(sigma_init)
             A = A.to(sigma_init)
             sigma_new, _ = self.sigma_step(sigma, t, dt)
