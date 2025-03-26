@@ -4,7 +4,7 @@ L: 15
 in_channels: 1
 
 # params
-path  : 'linear' ## only linear coded currently
+path  : 'trig' ## only linear coded currently
 J_0   : 0.0
 J_1   : 1.0
 mu_0  : 0.0
@@ -44,7 +44,7 @@ num_nodes: 1
 
 # optimization
 n_anneal      : 2000
-delta_t       : 0.005
+delta_t       : 0.008
 starting_k    : 1       # we start with final sampling integration time of starting_k*delta_t
 resample      : false
 resample_thres: 0.7 # only used if resample True
@@ -63,6 +63,6 @@ wandb_project: 'leaps'
 
 
 # frequencies
-ckpt_every: 5000
+ckpt_every: 2000
 log_every_local: 1
 plot_every: 100

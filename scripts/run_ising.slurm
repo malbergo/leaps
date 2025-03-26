@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus-per-node=1
-#SBATCH --time=0-12:00
+#SBATCH --time=0-20:00
 #SBATCH --mem=256G
 #SBATCH --mail-type=END
 #SBATCH --mail-user=albergo@harvard.edu

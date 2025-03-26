@@ -14,6 +14,16 @@ def get_interpolating_functions(config):
         def beta_func(t):
             return (1 - t) * config.beta_0 + t * config.beta_1
         return J_func, mu_func, B_func, beta_func
+    elif config.path == 'trig':
+        def J_func(t):
+            return torch.cos((torch.pi/2)*t) * config.J_0    + torch.sin((torch.pi/2)*t) * config.J_1
+        def mu_func(t):
+            return torch.cos((torch.pi/2)*t) * config.mu_0   + torch.sin((torch.pi/2)*t)* config.mu_1
+        def B_func(t):
+            return torch.cos((torch.pi/2)*t) * config.B_0    + torch.sin((torch.pi/2)*t) * config.B_1
+        def beta_func(t):
+            return torch.cos((torch.pi/2)*t) * config.beta_0 + torch.sin((torch.pi/2)*t) * config.beta_1
+        return J_func, mu_func, B_func, beta_func
     else:
         raise NotImplementedError
     
