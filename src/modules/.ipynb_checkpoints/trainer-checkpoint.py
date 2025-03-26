@@ -44,7 +44,7 @@ class IsingLightningModule(L.LightningModule):
         
         ## setup some training parameters:
         self.k_max   = int(1/config.delta_t)
-        self.ks      = repeat_integers(config.starting_k, self.k_max, config.n_opt)
+        self.ks      = repeat_integers(config.starting_k, self.k_max, config.n_anneal)
         self.eps     = torch.tensor(self.k_max)
 
 
@@ -72,7 +72,7 @@ class IsingLightningModule(L.LightningModule):
         sigmas = sigmas.detach()
         As = As.detach()
         
-        sub_bs    = 100
+        sub_bs    = self.config.bs_for_loss_per_gpu
         walk_idxs = torch.randint(low=0, high=self.config.bs_per_gpu, size=(sub_bs,))#.to(device)
         time_idxs = torch.randint(low=0, high=k + 1,  size=(sub_bs,))#.to(device)
         sigma_vec = sigmas[time_idxs, walk_idxs].requires_grad_(True)
@@ -103,6 +103,8 @@ class IsingLightningModule(L.LightningModule):
             self.log("ess", _ess, logger=True, sync_dist=True)
             self.log("t_final", final_t, logger=True, sync_dist=True)
         
+            grad   = torch.tensor([torch.nn.utils.clip_grad_norm_(self.net.parameters(), float('inf'))]).detach()
+            self.log("grad norm",      grad)
 
         if (self.global_step + 1) % self.config.plot_every == 0:
             plot_bs = 16 # hardcode
@@ -126,7 +128,8 @@ class IsingLightningModule(L.LightningModule):
     def configure_optimizers(self):
         
         base_lr = self.config.base_lr
-        opt   = torch.optim.Adam(self.net.parameters(), lr=base_lr)
+        # opt   = torch.optim.Adam(self.net.parameters(), lr=base_lr)
+        opt = torch.optim.Adam(list(self.F_t_net.parameters()) + list(self.net.parameters()), lr = base_lr)
         
         sched = torch.optim.lr_scheduler.StepLR(opt, 
                                                 step_size = self.config.lr_sched_step_size, 

@@ -67,10 +67,10 @@ class StateDependentConv2D(torch.nn.Module):
         super(StateDependentConv2D, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.A = torch.nn.Parameter(0.2*torch.rand(in_channels, kernel_size*kernel_size, prev_out_channels)/torch.sqrt(torch.tensor(kernel_size*kernel_size)))
-        self.b1 = torch.nn.Parameter(0.2*torch.rand(in_channels, kernel_size*kernel_size))
+        self.A = torch.nn.Parameter(0.005*torch.rand(in_channels, kernel_size*kernel_size, prev_out_channels)/torch.sqrt(torch.tensor(kernel_size*kernel_size)))
+        self.b1 = torch.nn.Parameter(0.005*torch.rand(in_channels, kernel_size*kernel_size))
         # self.C = torch.nn.Parameter(torch.rand(in_channels, kernel_size*kernel_size,kernel_size*kernel_size)/torch.sqrt(torch.tensor(kernel_size*kernel_size)))
-        self.b2 = torch.nn.Parameter(0.2*torch.rand(in_channels, kernel_size*kernel_size))
+        self.b2 = torch.nn.Parameter(0.005*torch.rand(in_channels, kernel_size*kernel_size))
         self.kernel_size = kernel_size
         self.mid_idx = (kernel_size * kernel_size)//2
         self.prev_out_channels = prev_out_channels
