@@ -8,8 +8,9 @@ from src.helpers import get_arch
 from src.modules import loss
 from src.modules import prior
 from src.modules import rhot
-from src.modules.sampler import DiscreteJarzynskiIntegrator
-from src.helpers import get_arch, get_arch_F, repeat_integers, visualize_lattices
+from src.modules.sampler import DiscreteJarzynskiIntegrator, ess_func
+from src.helpers import get_arch, get_arch_F, repeat_integers, visualize_lattices, inverse_repeat_quadratic
+import random
 
 import lightning as L
 
@@ -27,7 +28,25 @@ class DummyDataset(Dataset):
     def __getitem__(self, idx):
         return torch.tensor(0.0)  # not used
 
-
+def repeat_integers_with_increase(start, max_val, n_anneal, n_anneal_increase=0):
+    """
+    Generates a list where each integer from start to max_val (inclusive) is repeated
+    a number of times that starts at n_anneal and increases by n_anneal_increase for each subsequent integer.
+    
+    Args:
+        start (int): Starting integer.
+        max_val (int): Last integer (inclusive).
+        n_anneal (int): Number of repetitions for the first integer.
+        n_anneal_increase (int): Amount to increase the repetition count for each subsequent integer.
+    
+    Returns:
+        list: List of integers with the desired repetition pattern.
+    """
+    result = []
+    for i, k in enumerate(range(start, max_val + 1)):
+        repeats = n_anneal + (i-1) * n_anneal_increase
+        result.extend([k] * repeats)
+    return result
 
 
 class IsingLightningModule(L.LightningModule):
@@ -41,10 +60,25 @@ class IsingLightningModule(L.LightningModule):
         self.Energy  = rhot.make_ising(config)
         self.net     = get_arch(config)
         self.F_t_net = get_arch_F(config)
+        self.buffer = []
+        if hasattr(config, "use_buffer"):
+            self.use_buffer = config.use_buffer
+            self.buffer_cycle = config.buffer_cycle
+            self.max_buffer_size = config.max_buffer_size
+        else:
+            self.use_buffer = False
+            self.buffer_cycle = 1
+            self.max_buffer_size = 1
         
         ## setup some training parameters:
         self.k_max   = int(1/config.delta_t)
-        self.ks      = repeat_integers(config.starting_k, self.k_max, config.n_anneal)
+        if hasattr(config, "anneal_quadratic"):
+            if config.anneal_quadratic:
+                self.ks  = inverse_repeat_quadratic(config.starting_k, self.k_max, config.n_anneal)
+            else:
+                self.ks  = repeat_integers(config.starting_k, self.k_max, config.n_anneal)
+        else:
+            self.ks  = repeat_integers(config.starting_k, self.k_max, config.n_anneal)
         self.eps     = torch.tensor(self.k_max)
 
 
@@ -60,17 +94,32 @@ class IsingLightningModule(L.LightningModule):
         t_set = final_t*torch.rand(k - 1) # -1 because we append 1.0 at the end
         t_set = torch.cat((torch.tensor([0.0]), t_set, torch.tensor([final_t]))).requires_grad_(True)
         ts = torch.sort(t_set).values.to(self.device)
-        jit = DiscreteJarzynskiIntegrator(self.Energy, self.eps, 
-                                          ts, Qt_net=self.net, 
-                                          transport = True, n_save = k,
-                                          resample = self.config.resample,
-                                          resample_thres = self.config.resample_thres)
         
-
-        sigma_vec = 2 * torch.randint(0,2,size=(self.config.bs_per_gpu, self.config.L, self.config.L)).float().to(self.device) - 1
-        sigmas, As = jit.rollout(sigma_vec) ### [bs, n_save = k, L, L]
-        sigmas = sigmas.detach()
-        As = As.detach()
+        log_ess_flag = (self.global_step + 1) % self.config.log_every_local  == 0
+        
+        if (not self.use_buffer) or (self.global_step % self.buffer_cycle == self.buffer_cycle-1) or len(self.buffer) < self.max_buffer_size:
+            jit = DiscreteJarzynskiIntegrator(self.Energy, 
+                                              self.eps, 
+                                              ts, 
+                                              Qt_net=self.net, 
+                                              transport = True, n_save = k,
+                                              resample = self.config.resample,
+                                              resample_thres = self.config.resample_thres,
+                                              model_class = self.config.model_class, 
+                                              n_mcmc_per_net = self.config.n_mcmc_per_net)
+    
+            sigma_vec = 2 * torch.randint(0,2,size=(self.config.bs_per_gpu, self.config.L, self.config.L)).float().to(self.device) - 1
+            sigmas, As = jit.rollout(sigma_vec) ### [bs, n_save = k, L, L]
+            sigmas = sigmas.detach()
+            As = As.detach()
+            if self.use_buffer:
+                if len(self.buffer)>=self.max_buffer_size:
+                    self.buffer.pop(0)
+                self.buffer.append((sigmas.cpu(),As.cpu(),k))
+        else:
+            sigmas, As, k = random.choice(self.buffer)
+            sigmas = sigmas.to(self.device)
+            As = As.to(self.device)
         
         sub_bs    = self.config.bs_for_loss_per_gpu
         walk_idxs = torch.randint(low=0, high=self.config.bs_per_gpu, size=(sub_bs,))#.to(device)
@@ -96,10 +145,10 @@ class IsingLightningModule(L.LightningModule):
         
         
         # logging things
-        if (self.global_step + 1) % self.config.log_every_local  == 0:
+        if log_ess_flag:
             self.log("train_loss", loss_val, prog_bar=True, logger=True, sync_dist=True)
             
-            _ess = jit.ess(As[-1].double())
+            _ess = ess_func(As[-1].double())
             self.log("ess", _ess, logger=True, sync_dist=True)
             self.log("t_final", final_t, logger=True, sync_dist=True)
         

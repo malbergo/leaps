@@ -112,9 +112,7 @@ def zip_and_log_code(base_code_path, results_dir, logger):
     artifact = wandb.Artifact('code', type='code')
     artifact.add_file(zip_path)
     logger.experiment.log_artifact(artifact)
-    
-    
-    
+        
     
     
     
@@ -133,5 +131,72 @@ def repeat_integers(start, end, n_opt):
     
     if remainder > 0:
         result.extend([end] * remainder)
+    
+    return result
+
+
+def inverse_repeat_quadratic(k_min, k_max, total_steps):
+    """
+    Generate a vector of length total_steps with values from k_min to k_max,
+    where the number of repetitions for each integer increases linearly.
+    
+    For the i-th integer (starting with i=0 for k_min), the "ideal" repetition is:
+        r_i = 1 + i*d
+    and we require that the total sum equals total_steps:
+        total_steps = N + d*(N-1)*N/2,
+    where N = k_max - k_min + 1.
+    
+    Due to rounding we adjust the final vector to have exactly total_steps elements.
+    
+    Args:
+        k_min (int): Starting integer.
+        k_max (int): Ending integer.
+        total_steps (int): Desired length of the output vector.
+    
+    Returns:
+        list: A list of length total_steps with integers from k_min to k_max, where
+              the number of repetitions increases approximately linearly.
+    """
+    N = k_max - k_min + 1
+    if total_steps < N:
+        raise ValueError("total_steps must be at least as many as the number of distinct values")
+    
+    # If only one value is requested, return a constant vector.
+    if N == 1:
+        return [k_min] * total_steps
+
+    # Compute the step increase d from the formula:
+    # total_steps = N + d*(N-1)*N/2   =>   d = 2*(total_steps - N) / (N*(N-1))
+    d = 2 * (total_steps - N) / (N * (N - 1))
+    
+    # Compute the "ideal" repetition counts (in continuous space)
+    r = [1 + i * d for i in range(N)]
+    
+    # Compute cumulative boundaries (continuous)
+    cum = [0]
+    for rep in r:
+        cum.append(cum[-1] + rep)
+    
+    # Normalize the cumulative sum so that the last value equals total_steps
+    scale = total_steps / cum[-1]
+    cum_scaled = [x * scale for x in cum]
+    
+    # Round the cumulative boundaries to get integer indices
+    cum_int = [int(round(x)) for x in cum_scaled]
+    # Ensure the first and last boundaries are exactly 0 and total_steps
+    cum_int[0] = 0
+    cum_int[-1] = total_steps
+
+    # Build the final vector: for each integer value, determine its count
+    result = []
+    for i in range(N):
+        count = cum_int[i+1] - cum_int[i]
+        result.extend([k_min + i] * count)
+    
+    # Due to rounding issues, adjust the length if necessary.
+    if len(result) < total_steps:
+        result.extend([k_max] * (total_steps - len(result)))
+    elif len(result) > total_steps:
+        result = result[:total_steps]
     
     return result

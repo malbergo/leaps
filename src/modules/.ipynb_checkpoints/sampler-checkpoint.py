@@ -8,7 +8,8 @@ import numpy as np
 
 from src.modules.rhot import Ising, Potts
 
-
+def ess_func(At):
+    return torch.mean(torch.exp(At))**2 / torch.mean(torch.exp(2*At))
 
 
 @dataclass
@@ -34,7 +35,7 @@ class DiscreteJarzynskiIntegrator:
         
         
     def ess(self, At):
-        return torch.mean(torch.exp(At))**2 / torch.mean(torch.exp(2*At))
+        return ess_func(At)
         
     def _single_step_glauber(self, cfg, t, dt):
         """
