@@ -25,7 +25,7 @@ class DiscreteJarzynskiIntegrator:
     turn_off_jarz: bool = False
     model_class: str = "ising"
     n_mcmc_per_net: int = 1
-    q:              int = 2  ## number of states in system, 2 = ising
+    q:              int = 2
 
     def __post_init__(self) -> None:
         """Initialize time grid and step size."""
@@ -192,13 +192,16 @@ class DiscreteJarzynskiIntegrator:
             dt = (self.ts[i+1] - self.ts[i]).repeat(len(sigma)).to(sigma_init.device) ### assumes first element in self.ts is 0
             t = t.repeat(len(sigma)).to(sigma_init.device) #.requires_grad_(True)
             sigma = sigma.to(sigma_init)
-            A = A.to(sigma_init)
             sigma_new, _ = self.sigma_step(sigma, t, dt)
-            A_new = self.A_step(sigma, t, A, dt)
-
+            
+            if self.compute_is_weights:
+                A = A.to(sigma_init)
+                A_new = self.A_step(sigma, t, A, dt)
+            else:
+                A_new = torch.zeros_like(A)
+                
             t_new = self.ts[i+1].repeat(len(sigma)) #.requires_grad_(True)
 
-            
             if self.ess(A_new.double()) < self.resample_thres and self.resample:
                 # raise NotImplementedError()
                 resample_count +=1

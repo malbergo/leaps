@@ -150,6 +150,7 @@ class IsingLightningModule(L.LightningModule):
             
             _ess = ess_func(As[-1].double())
             self.log("ess", _ess, logger=True, sync_dist=True)
+            self.log("k_ess", k, logger=True, sync_dist=True)
             self.log("t_final", final_t, logger=True, sync_dist=True)
         
             grad   = torch.tensor([torch.nn.utils.clip_grad_norm_(self.net.parameters(), float('inf'))]).detach()
