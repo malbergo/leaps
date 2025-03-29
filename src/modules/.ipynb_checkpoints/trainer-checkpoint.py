@@ -161,15 +161,16 @@ class IsingLightningModule(L.LightningModule):
             # lattices = make_grid(list([*sigmas[-1, :bs].detach().cpu()]))
 
             indices = torch.randperm(full_bs)[:plot_bs]  # randomly select indices
-            some_sigmas = sigmas[-1][indices].unsqueeze(1)  # Shape: [n_plots, 1, L, L] for grayscale
+            some_sigmas = sigmas[-1][indices]  # Shape: [n_plots, 1, L, L] for grayscale
+            
+            fig = visualize_lattices(some_sigmas)
 
-            grid = make_grid(some_sigmas, nrow=8, padding=2, normalize=True)  # Shape: (1, H, W)
-
-            # Convert grid to NumPy format (H, W, C)
-            grid_np = grid.permute(1, 2, 0).cpu().numpy()
-
+#             grid = make_grid(some_sigmas, nrow=8, padding=2, normalize=True)  # Shape: (1, H, W)
+#             # Convert grid to NumPy format (H, W, C)
+#             grid_np = grid.permute(1, 2, 0).cpu().numpy()
             # Log to WandB
-            self.logger.experiment.log({"Lattice Visualization": wandb.Image(grid_np)})
+            # self.logger.experiment.log({"Lattice Visualization": wandb.Image(grid_np)})
+            self.logger.experiment.log({"Lattice Visualization": wandb.Image(fig)})
 
         
         return loss_val
@@ -193,3 +194,42 @@ class IsingLightningModule(L.LightningModule):
         return DataLoader(DummyDataset(), batch_size=1)
     
 
+
+
+import seaborn as sns
+from matplotlib.colors import ListedColormap
+import matplotlib.pyplot as plt
+def visualize_lattices(phi, n_rows = 2, n_cols = 5, save = None):
+    """
+    Visualize a subset of the lattices in a grid.
+
+    Parameters:
+    - phi: A tensor of shape [bs, L, L] representing the batch of lattices.
+    - n_rows: Number of rows in the subplot grid.
+    - n_cols: Number of columns in the subplot grid.
+    - title: The title of the plot.
+    """
+    bs, L, _ = phi.shape
+    n_plots = min(n_rows * n_cols, bs)
+    print("N ROW:", n_rows)
+    print("N COL:", n_cols)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4, 2.5))
+
+    indices = np.random.choice(bs, n_plots, replace=False)  # Randomly select lattice indices
+    
+    # indices = np.arange(15,25)
+    
+    for i, idx in enumerate(indices):
+        row = i // n_cols
+        col = i % n_cols
+        ax = axes[row, col]
+        # cmap = sns.cubehelix_palette(start=-0.8, rot=0.4, gamma=1.0, dark=0.2, light=0.9, reverse=False, as_cmap=True)
+        palette = sns.color_palette("tab10", n_colors=7)
+        cmap = ListedColormap(palette)
+        im = ax.imshow(phi[idx], cmap=cmap, origin='lower')
+        ax.axis('off') 
+
+    fig.subplots_adjust( wspace=0.1, hspace=-0.5)
+    
+    return fig
