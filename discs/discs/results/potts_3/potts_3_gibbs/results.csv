@@ -1,2 +1,0 @@
-sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
-gibbs,potts,3,"(15, 15)",100,100000,0.5,7.565198659896851,[31.3124   22.862564],[0.00062625 0.00045725],[4.1390057 3.0220704],[0.00020875 0.00015242]

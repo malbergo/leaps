@@ -1,2 +1,0 @@
-sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
-hammingball,potts,3,"(15, 15)",100,100000,0.5,281.4002215862274,[18.182955 16.58914 ],[0.00036366 0.00033178],[0.06461599 0.05895212],[1.7317099e-05 1.5799182e-05]

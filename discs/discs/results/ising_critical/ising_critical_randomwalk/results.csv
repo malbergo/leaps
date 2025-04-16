@@ -1,2 +1,0 @@
-sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
-a_randomwalk,ising,2,"(15, 15)",100,100000,0.5,5.279811382293701,[34.244263 21.410017],[0.00068489 0.0004282 ],[6.4858875 4.0550723],[0.00034244 0.0002141 ]
