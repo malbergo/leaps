@@ -1,0 +1,76 @@
+# ising
+target: 'potts'
+L: 15
+in_channels: 20
+
+# params
+path  : 'linear' ## only linear coded currently
+J_0   : 0.0
+J_1   : 1.0
+mu_0  : 0.0
+mu_1  : 0.0
+B_0   : 0.0
+B_1   : 0.0
+beta_0: 1.0010 #1.0043
+beta_1: 1.0010 #1.0043
+
+
+# opt + sched
+base_lr: 3.0e-4
+lr_sched_gamma: .995
+lr_sched_step_size: 1000
+warm_up: 1000
+
+
+# Q model
+arch: 'conv' ## attn or conv
+
+
+## if conv
+kernel_sizes: [3, 5, 7, 9, 15]
+num_channels: 20
+embedding_type: 'grid_embedding'
+
+# F model
+F_hidden_sizes: [200,200,200,200]
+
+
+
+# compute
+accelerator: 'gpu'
+num_workers: 8
+num_gpus: 1
+num_nodes: 1
+
+
+# optimization
+n_anneal      : 20000
+anneal_quadratic: true
+delta_t       : 0.008
+starting_k    : 1       # we start with final sampling integration time of starting_k*delta_t
+resample      : false
+resample_thres: 0.7 # only used if resample True
+model_class:    "potts"
+n_mcmc_per_net: 1000
+grad_clip_norm: 100000
+bs_per_gpu    : 200
+bs_for_loss_per_gpu: 400
+use_buffer: true
+buffer_cycle: 100
+max_buffer_size: 100
+n_cat: 3
+
+# saving results
+code_path: '/data/rbg/users/phold/leaps/'
+ckpts_dir: '/data/rbg/users/phold/leaps/ckpts'
+results_path: '/data/rbg/users/phold/leaps/'
+
+
+use_wandb: true
+wandb_project: 'leaps'
+
+
+# frequencies
+ckpt_every: 2000
+log_every_local: 1
+plot_every: 100
