@@ -1,6 +1,13 @@
+![Ising Model Animation](figures/ising.gif)
+
 # Official implementation of LEAPS
 
 This is the official implementation of [LEAPS: A discrete neural sampler via locally equivariant neural networks](https://arxiv.org/pdf/2502.10843), a work by [Peter Holderrieth*](https://www.peterholderrieth.com/), [Michael S. Albergo*](http://malbergo.me/), and [Tommi S. Jaakkola](https://people.csail.mit.edu/tommi/).
+
+
+## Setup environment
+
+```conda env create -f environment.yml```
 
 ## Run experiments for Ising and Potts model
 
