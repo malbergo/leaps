@@ -342,11 +342,24 @@ class ConvPottsRateMatrix(nn.Module):
         weighted_in_rates = (in_rates * neighbor_lh_ratios).sum(dim=[1,2,3])
         return stay_rate + weighted_in_rates
 
-def get_potts_conv_model(config):
+def get_conv_model(config):
 
-    kwargs = {
-        'n_cat': config.n_cat,
-        'kernel_sizes': config.kernel_sizes,
-        'num_channels': config.num_channels,
-    }
-    return ConvPottsRateMatrix(**kwargs)
+    if config.model_class == "ising":
+        kwargs = {
+            'kernel_sizes': config.kernel_sizes,
+            'num_channels': config.num_channels,
+            'in_channels' : config.in_channels , 
+        }
+        return ConvSpinRateMatrix(**kwargs)
+
+    elif config.model_class == "potts":
+        kwargs = {
+            'n_cat': config.n_cat,
+            'kernel_sizes': config.kernel_sizes,
+            'num_channels': config.num_channels,
+        }
+        return ConvPottsRateMatrix(**kwargs)
+    else:
+        raise NotImplementedError()
+    
+    

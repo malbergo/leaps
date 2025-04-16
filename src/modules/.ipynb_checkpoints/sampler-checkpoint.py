@@ -25,7 +25,8 @@ class DiscreteJarzynskiIntegrator:
     turn_off_jarz: bool = False
     model_class: str = "ising"
     n_mcmc_per_net: int = 1
-    compute_is_weights: bool = True
+    compute_is_weights: int = True
+    q: int = 2
 
     def __post_init__(self) -> None:
         """Initialize time grid and step size."""
@@ -33,6 +34,9 @@ class DiscreteJarzynskiIntegrator:
         assert self.n_save > 0 ## will always save the first sample
         assert self.n_step % self.n_save == 0, f"{self.n_step} is not divisible by {self.n_save}"
         self.save_freq = self.n_step // self.n_save
+        
+        if self.model_class == 'ising':
+            assert self.q == 2
         
         
     def ess(self, At):
@@ -79,6 +83,52 @@ class DiscreteJarzynskiIntegrator:
         cfg[row, col] = pm1 * cfg[row, col] 
 
         return cfg
+    
+    
+    def _single_step_glauber_potts(self, cfg, t, dt):
+        """
+        Perform a single Glauber update for the potts model.
+        cfg : (L, L)
+        J   : coupling constant
+        beta: inverse temperature
+        """
+        L = cfg.shape[0]
+        
+        J, B, beta = self.dpath.setup_params(t)
+
+        # Randomly select site
+        row = np.random.randint(0, L, ())
+        col = np.random.randint(0, L, ())
+        current_state = cfg[row, col]
+
+        # ompute neighbors 
+        neighbors = torch.stack([
+            cfg[(row - 1) % L, col],
+            cfg[(row + 1) % L, col],
+            cfg[row, (col - 1) % L],
+            cfg[row, (col + 1) % L]
+        ])
+
+        matches_current = (neighbors == current_state).sum()
+
+        # propose a flip uniformly from {0,...,q-1}
+        proposed_state = torch.randint(0, self.q , (), device=cfg.device)
+
+        # adjust proposal state to always differ from current without branching
+        proposed_state = (current_state + 1 + proposed_state) % self.q
+
+        matches_proposed = (neighbors == proposed_state).sum()
+
+        delta_E = -J * (matches_proposed - matches_current)
+        acc_prob = torch.exp(-beta * delta_E).clamp(max=1.0)
+
+        flip = (torch.rand(()).to(cfg.device) < acc_prob).float()
+
+        # update cfg 
+        updated_cfg = cfg.clone()
+        updated_cfg[row, col] = flip * proposed_state + (1 - flip) * current_state
+
+        return updated_cfg
 
     def metropolis_step(self, cfgs, t, dt):
         """
@@ -89,7 +139,8 @@ class DiscreteJarzynskiIntegrator:
             return vmap(self._single_step_glauber, in_dims = (0, 0, 0),
                         out_dims=(0), randomness='different')(cfgs, t, dt)
         elif self.model_class == "potts":
-            raise NotImplementedError()
+            return vmap(self._single_step_glauber_potts, in_dims = (0, 0, 0),
+                        out_dims=(0), randomness='different')(cfgs, t, dt)
         else:
             raise NotImplementedError()
         

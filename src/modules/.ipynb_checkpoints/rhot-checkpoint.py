@@ -277,7 +277,8 @@ class Potts:
         print("Js:"    , self.J_1, self.J_0)
         print("Bs:"    , self.B_1, self.B_0)
         print("betas:" , self.beta_1, self.beta_0)
-        
+        print("n_cat:" , self.n_cat)
+
     def setup_params(self, t):
         
 

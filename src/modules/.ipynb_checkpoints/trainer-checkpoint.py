@@ -11,7 +11,7 @@ from src.modules import rhot
 from src.modules.sampler import DiscreteJarzynskiIntegrator, ess_func
 from src.helpers import get_arch, get_arch_F, repeat_integers, visualize_lattices, inverse_repeat_quadratic
 import random
-
+import sys
 import lightning as L
 
 
@@ -57,7 +57,12 @@ class IsingLightningModule(L.LightningModule):
         
         self.config  = config
         self.loss_fn = loss.make_loss(config)
-        self.Energy  = rhot.make_ising(config)
+        if config.model_class == "ising":
+            self.Energy  = rhot.make_ising(config)
+        elif config.model_class == "potts":
+            self.Energy  = rhot.make_potts(config)
+        else:
+            raise NotImplementedError()
         self.net     = get_arch(config)
         self.F_t_net = get_arch_F(config)
         self.buffer = []
@@ -79,6 +84,11 @@ class IsingLightningModule(L.LightningModule):
                 self.ks  = repeat_integers(config.starting_k, self.k_max, config.n_anneal)
         else:
             self.ks  = repeat_integers(config.starting_k, self.k_max, config.n_anneal)
+        
+        if hasattr(config, "warm_up") and config.warm_up > 0:
+            self.ks = [config.starting_k] * config.warm_up + self.ks
+            print("Added warm_up of: ", config.warm_up)
+    
         self.eps     = torch.tensor(self.k_max)
 
 
@@ -98,7 +108,8 @@ class IsingLightningModule(L.LightningModule):
         log_ess_flag = (self.global_step + 1) % self.config.log_every_local  == 0
         
         if (not self.use_buffer) or (self.global_step % self.buffer_cycle == self.buffer_cycle-1) or len(self.buffer) < self.max_buffer_size:
-            jit = DiscreteJarzynskiIntegrator(self.Energy, 
+            if self.config.model_class == "ising":
+                jit = DiscreteJarzynskiIntegrator(self.Energy, 
                                               self.eps, 
                                               ts, 
                                               Qt_net=self.net, 
@@ -107,8 +118,19 @@ class IsingLightningModule(L.LightningModule):
                                               resample_thres = self.config.resample_thres,
                                               model_class = self.config.model_class, 
                                               n_mcmc_per_net = self.config.n_mcmc_per_net)
-    
-            sigma_vec = 2 * torch.randint(0,2,size=(self.config.bs_per_gpu, self.config.L, self.config.L)).float().to(self.device) - 1
+                sigma_vec = 2 * torch.randint(0,2,size=(self.config.bs_per_gpu, self.config.L, self.config.L)).float().to(self.device) - 1
+            elif self.config.model_class == "potts":
+                sigma_vec = torch.randint(0,self.config.n_cat,size=(self.config.bs_per_gpu, self.config.L, self.config.L)).to(self.device)
+                jit = DiscreteJarzynskiIntegrator(self.Energy, 
+                                                    self.eps, 
+                                                    ts, 
+                                                    Qt_net=self.net, 
+                                                    transport = True, n_save = k,
+                                                    resample = self.config.resample,
+                                                    resample_thres = self.config.resample_thres,
+                                                    model_class = self.config.model_class, 
+                                                    n_mcmc_per_net = self.config.n_mcmc_per_net,
+                                                    q=self.config.n_cat)
             sigmas, As = jit.rollout(sigma_vec) ### [bs, n_save = k, L, L]
             sigmas = sigmas.detach()
             As = As.detach()
@@ -124,8 +146,8 @@ class IsingLightningModule(L.LightningModule):
         sub_bs    = self.config.bs_for_loss_per_gpu
         walk_idxs = torch.randint(low=0, high=self.config.bs_per_gpu, size=(sub_bs,))#.to(device)
         time_idxs = torch.randint(low=0, high=k + 1,  size=(sub_bs,))#.to(device)
-        sigma_vec = sigmas[time_idxs, walk_idxs].requires_grad_(True)
-        time_vec = ts[time_idxs].requires_grad_(True)
+        sigma_vec = sigmas[time_idxs, walk_idxs] #.requires_grad_(True)
+        time_vec = ts[time_idxs] #.requires_grad_(True)
         
         # compute Jarzinsky corrector
         in_rates, stay_rate  = self.net.get_in_rates(sigma_vec, time_vec)
@@ -164,7 +186,7 @@ class IsingLightningModule(L.LightningModule):
             indices = torch.randperm(full_bs)[:plot_bs]  # randomly select indices
             some_sigmas = sigmas[-1][indices]  # Shape: [n_plots, 1, L, L] for grayscale
             
-            fig = visualize_lattices(some_sigmas)
+            fig = visualize_lattices(some_sigmas.cpu().detach())
 
 #             grid = make_grid(some_sigmas, nrow=8, padding=2, normalize=True)  # Shape: (1, H, W)
 #             # Convert grid to NumPy format (H, W, C)

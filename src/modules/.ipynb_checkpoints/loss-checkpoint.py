@@ -25,7 +25,7 @@ def loss_ising(nnet: ConvSpinRateMatrix, Energy: Ising, sigma_vec, time_vec):
 
 
 def make_loss(config):
-    if config.target == 'ising':
+    if config.target == 'ising' or config.target == "potts":
         loss_fn = loss_ising
         
     return loss_fn

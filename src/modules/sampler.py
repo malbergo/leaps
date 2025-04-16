@@ -7,6 +7,7 @@ from typing import Union
 import numpy as np
 
 from src.modules.rhot import Ising, Potts
+from src.modules.resample import systematic_resample
 
 def ess_func(At):
     return torch.mean(torch.exp(At))**2 / torch.mean(torch.exp(2*At))
@@ -25,7 +26,8 @@ class DiscreteJarzynskiIntegrator:
     turn_off_jarz: bool = False
     model_class: str = "ising"
     n_mcmc_per_net: int = 1
-    q:              int = 2
+    compute_is_weights: int = True
+    q: int = 2
 
     def __post_init__(self) -> None:
         """Initialize time grid and step size."""
@@ -36,10 +38,6 @@ class DiscreteJarzynskiIntegrator:
         
         if self.model_class == 'ising':
             assert self.q == 2
-        if self.model_class == 'potts':
-            assert self.q == 3
-        
-            
         
         
     def ess(self, At):
@@ -88,7 +86,7 @@ class DiscreteJarzynskiIntegrator:
         return cfg
     
     
-    def _single_step_glauber_potts(cfg, t, dt):
+    def _single_step_glauber_potts(self, cfg, t, dt):
         """
         Perform a single Glauber update for the potts model.
         cfg : (L, L)
@@ -125,7 +123,7 @@ class DiscreteJarzynskiIntegrator:
         delta_E = -J * (matches_proposed - matches_current)
         acc_prob = torch.exp(-beta * delta_E).clamp(max=1.0)
 
-        flip = (torch.rand(()) < acc_prob).float()
+        flip = (torch.rand(()).to(cfg.device) < acc_prob).float()
 
         # update cfg 
         updated_cfg = cfg.clone()
@@ -177,10 +175,10 @@ class DiscreteJarzynskiIntegrator:
         """
         bs = sigma_init.shape[0]
         sigma_stack = torch.zeros((self.n_save +1, *sigma_init.shape)).to(sigma_init)
-        As = torch.zeros((self.n_save +1, bs)).to(sigma_init)
+        As = torch.zeros((self.n_save +1, bs)).to(sigma_init.device)
 
         # initialize weights A to zero
-        A = torch.zeros(bs).to(sigma_init)
+        A = torch.zeros(bs).to(sigma_init.device)
         sigma = sigma_init
         
         sigma_stack[0] = sigma_init.detach()
@@ -194,11 +192,8 @@ class DiscreteJarzynskiIntegrator:
             sigma = sigma.to(sigma_init)
             sigma_new, _ = self.sigma_step(sigma, t, dt)
             
-            if self.compute_is_weights:
-                A = A.to(sigma_init)
-                A_new = self.A_step(sigma, t, A, dt)
-            else:
-                A_new = torch.zeros_like(A)
+            A = A.to(sigma_init.device)
+            A_new = self.A_step(sigma, t, A, dt)
                 
             t_new = self.ts[i+1].repeat(len(sigma)) #.requires_grad_(True)
 
@@ -209,7 +204,7 @@ class DiscreteJarzynskiIntegrator:
                 weights = torch.softmax(A_new, dim = 0)
                 indices = systematic_resample(weights)
                 sigma_new   = torch.clone(sigma_new[indices])
-                A_new   = torch.zeros(len(weights)).to(sigma_init)
+                A_new   = torch.zeros(len(weights)).to(sigma_init.device)
                 
             if (i + 1) % self.save_freq == 0:            
                 sigma_stack[save_ind] = torch.clone(sigma_new.detach())

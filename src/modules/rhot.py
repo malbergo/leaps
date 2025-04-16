@@ -248,6 +248,30 @@ def get_interpolating_functions_potts(config):
         def beta_func(t):
             return (1 - t) * config.beta_0 + t * config.beta_1
         return J_func, B_func, beta_func
+        
+    elif config.path == 'trig':
+        def J_func(t):
+            return torch.cos((torch.pi/2)*t) * config.J_0    + torch.sin((torch.pi/2)*t) * config.J_1
+        def B_func(t):
+            return torch.cos((torch.pi/2)*t) * config.B_0    + torch.sin((torch.pi/2)*t) * config.B_1
+        def beta_func(t):
+            return torch.cos((torch.pi/2)*t) * config.beta_0 + torch.sin((torch.pi/2)*t) * config.beta_1
+        return J_func, B_func, beta_func
+    
+    elif config.path == 'switch':
+        switch = 0.2
+        value_switch = config.value_switch
+        alpha=0.7
+        def value_switch_func(t):
+            return (value_switch*torch.clip(t,min=0.0,max=switch)/switch)\
+                    +(1-value_switch)*torch.sin(0.5*torch.pi*torch.clip(t-switch,max=10,min=0)**alpha)
+        def J_func(t):
+            return (1-value_switch_func(t)) * config.J_0 + value_switch_func(t) * config.J_1
+        def B_func(t):
+            return (1-value_switch_func(t)) * config.B_0 + value_switch_func(t) * config.B_1
+        def beta_func(t):
+            return (1-value_switch_func(t)) * config.beta_0 + value_switch_func(t) * config.beta_1
+        return J_func, B_func, beta_func
     else:
         raise NotImplementedError
     
@@ -277,7 +301,8 @@ class Potts:
         print("Js:"    , self.J_1, self.J_0)
         print("Bs:"    , self.B_1, self.B_0)
         print("betas:" , self.beta_1, self.beta_0)
-        
+        print("n_cat:" , self.n_cat)
+
     def setup_params(self, t):
         
 

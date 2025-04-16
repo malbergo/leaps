@@ -164,7 +164,6 @@ class ConvSpinRateMatrix(nn.Module):
 
     
     def forward(self, sigma_vec: torch.Tensor, time_vec: torch.Tensor) -> torch.Tensor:
-        # print("IVE BEEN MADEEEE!")
         return self.network(sigma_vec, time_vec)
 
     def get_out_rates(self, sigma_vec: torch.Tensor, time_vec: torch.Tensor) -> torch.Tensor:
@@ -216,8 +215,14 @@ def get_conv_model(config):
 class GridEmbedding(nn.Module):
     def __init__(self, n_cat, embedding_dim):
         super(GridEmbedding, self).__init__()
-        # Create an embedding layer that maps each category (0, ..., n_cat-1) to a vector of size embedding_dim (i.e., C)
-        self.embedding = nn.Embedding(n_cat, embedding_dim)
+        # Create an embedding layer that maps each category (0, ..., n_cat-1) to a vector of size embedding_dim
+        self.embedding = nn.Embedding(n_cat, embedding_dim, max_norm=1.0, scale_grad_by_freq=True)
+        
+        # Initialize the embedding weights with a normal distribution
+        nn.init.normal_(self.embedding.weight, mean=0, std=1/torch.sqrt(torch.tensor(embedding_dim)))
+        # Normalize each embedding vector to have unit norm
+        #with torch.no_grad():
+        #    self.embedding.weight.copy_(F.normalize(self.embedding.weight, p=2, dim=1))
 
     def forward(self, x):
         # x is of shape (bs, L, L) and contains integers in [0, n_cat-1]
@@ -227,10 +232,26 @@ class GridEmbedding(nn.Module):
         x = x.permute(0, 3, 1, 2)
         return x
 
+class NumericalEmbedding(nn.Module):
+    def __init__(self, n_cat, embedding_dim):
+        super(NumericalEmbedding, self).__init__()
+        self.n_cat = n_cat
+        self.embedding_dim = embedding_dim
+
+    def forward(self, x):
+        x_expand = x.unsqueeze(1).repeat(1, self.embedding_dim, 1, 1)
+        offsets = (torch.arange(self.embedding_dim, device=x.device) % self.n_cat)
+        x_expand = (x_expand + offsets[None,:,None,None]) % self.n_cat
+        return x_expand.float()
+
 class PottsLocEquivConvNet(torch.nn.Module):
-    def __init__(self, n_cat: int, kernel_sizes: list,  num_channels = 4):
+    def __init__(self, n_cat: int, kernel_sizes: list,  num_channels = 4, embedding_type: str = 'grid_embedding'):
         super(PottsLocEquivConvNet, self).__init__()
-        self.emb = GridEmbedding(n_cat, num_channels)
+        if embedding_type == 'grid_embedding':
+            self.emb = GridEmbedding(n_cat, num_channels)
+        elif embedding_type == 'numerical_embedding':
+            self.emb = NumericalEmbedding(n_cat,num_channels)
+
         in_channels = num_channels
 
         self.num_channels = num_channels
@@ -250,7 +271,7 @@ class PottsLocEquivConvNet(torch.nn.Module):
                                 prev_out_channels=num_channels))
         self.convs = torch.nn.ModuleList(self.convs)
         
-        self.linear = torch.nn.Parameter(torch.randn(size=(n_cat,num_channels)) / torch.sqrt(torch.tensor(num_channels)))
+        self.linear = torch.nn.Parameter(0.02 * torch.randn(size=(n_cat,num_channels)) / torch.sqrt(torch.tensor(num_channels)))
 
     def forward(self, x, t):
         t = t[:,None,None,None]
@@ -270,11 +291,14 @@ class ConvPottsRateMatrix(nn.Module):
     def __init__(self, 
                  n_cat: int,
                  kernel_sizes: list,  
-                 num_channels = 4):
+                 num_channels = 4,
+                 embedding_type: str = 'grid_embedding'):
         super().__init__()
         self.network = PottsLocEquivConvNet(n_cat=n_cat,
                                             kernel_sizes=kernel_sizes, 
-                                            num_channels=num_channels)
+                                            num_channels=num_channels,
+                                            embedding_type=embedding_type
+                                            )
     
     def forward(self, x_vec: torch.Tensor, time_vec: torch.Tensor) -> torch.Tensor:
         return self.network(x_vec, time_vec)
@@ -284,7 +308,7 @@ class ConvPottsRateMatrix(nn.Module):
         output = self.forward(x_vec, time_vec)
         
         # Set rates from x to itself to zero:
-        index_tensor = x_vec.unsqueeze(1)  # shape: [4, 1, 8, 8]
+        index_tensor = x_vec.unsqueeze(1)  # shape: [bs, 1, L, L]
         zero_src = torch.zeros_like(index_tensor, dtype=output.dtype, device=output.device)
         output.scatter_(dim=1, index=index_tensor, src=zero_src)
         return output
@@ -320,14 +344,14 @@ class ConvPottsRateMatrix(nn.Module):
 
         # To ensure numerical stability and avoid NaNs, we set the ones 
         # that are zero everywhere to be simple the uniform
-        unnormalizable_mask = (probs_perm.sum(dim=-1)<1)
+        unnormalizable_mask = (probs_perm.sum(dim=-1)<1.0)
         unif_dummy = 1/rates_perm.shape[-1]
         probs_perm[unnormalizable_mask] = unif_dummy
 
         # Sample from categorical
         dist = torch.distributions.Categorical(probs=probs_perm)
         samples = dist.sample()
-        
+
         # Flip spins:
         samples[~flip_mask] = x[~flip_mask]
         return samples
@@ -342,11 +366,25 @@ class ConvPottsRateMatrix(nn.Module):
         weighted_in_rates = (in_rates * neighbor_lh_ratios).sum(dim=[1,2,3])
         return stay_rate + weighted_in_rates
 
-def get_potts_conv_model(config):
+def get_conv_model(config):
 
-    kwargs = {
-        'n_cat': config.n_cat,
-        'kernel_sizes': config.kernel_sizes,
-        'num_channels': config.num_channels,
-    }
-    return ConvPottsRateMatrix(**kwargs)
+    if config.model_class == "ising":
+        kwargs = {
+            'kernel_sizes': config.kernel_sizes,
+            'num_channels': config.num_channels,
+            'in_channels' : config.in_channels , 
+        }
+        return ConvSpinRateMatrix(**kwargs)
+
+    elif config.model_class == "potts":
+        kwargs = {
+            'n_cat': config.n_cat,
+            'kernel_sizes': config.kernel_sizes,
+            'num_channels': config.num_channels,
+            'embedding_type': config.embedding_type,
+        }
+        return ConvPottsRateMatrix(**kwargs)
+    else:
+        raise NotImplementedError()
+    
+    

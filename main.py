@@ -9,7 +9,6 @@ from src.modules.trainer import IsingLightningModule
 
 from src.helpers import get_next_dir_number, zip_and_log_code
 
-
 import wandb
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
@@ -122,10 +121,13 @@ def main():
         
         
     # setup model
-    if conf.target == 'ising':
-        model = IsingLightningModule(conf)
+    if conf.target == 'ising' or conf.target == 'potts':
+        if conf.ckpt_fname is None:
+            model = IsingLightningModule(conf)
+        else:
+            model = IsingLightningModule.load_from_checkpoint(conf.ckpt_fname)
     else:
-        raise NotImplementedError("only set up for ising target right now")
+        raise NotImplementedError("only set up for ising and potts target right now")
         
         
     ### allows to monitor learning rate in wandb

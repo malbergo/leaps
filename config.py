@@ -44,5 +44,5 @@ def get_config(yml_path, ckpt_fname = None):
 
 
     config = set_more_stuff(config)
-    assert config.target in ['ising', 'uco'], "possible tasks are now ising and unsupervised combinatorial optimization"
+    assert config.target in ['ising', 'potts'], "possible tasks are now ising and unsupervised combinatorial optimization"
     return config
