@@ -20,19 +20,7 @@ This is the official implementation of [LEAPS: A discrete neural sampler via loc
 ```python main.py --yml=ymls/potts_config.yml```
 
 
-<figure align="center">
-  <object 
-    data="figures/ising_magnetization_and_corr.pdf" 
-    type="application/pdf" 
-    width="100%" 
-    height="600px">
-    <p>
-      Your browser doesn’t support embedded PDFs.
-      <a href="docs/LEAPS_paper.pdf">Download the PDF instead</a>.
-    </p>
-  </object>
-  <figcaption>Figure: The full LEAPS paper in PDF form.</figcaption>
-</figure>
+![Potts Model Animation](figures/potts.gif)
 
 ## Run experiments for different energy model
 
@@ -44,9 +32,11 @@ We provide two model checkpoints for the two Boltzmann distributions we studied:
 - Ising model at critical temperature: ```ckpts/ising_final.ckpt```
 - Potts model at critical temperature: ```ckpts/potts_final.ckpt```
 
-
 ## Analyis of trained models
 
+We have two notebooks that illustrate how to load models and evaluate their ESS:
+- `notebooks/load_ising_network.ipynb`
+- `notebooks/load_potts_network.ipynb`
 
 ## DISCS benchmark
 
