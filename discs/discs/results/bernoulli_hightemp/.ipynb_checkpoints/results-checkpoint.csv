@@ -1,0 +1,2 @@
+sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
+a_randomwalk,bernoulli,2,"(10000,)",100,100000,0.5,5.556282043457031,[35.349403 11.068396],[0.00070699 0.00022137],[6.3620605 1.9920508],[0.00035349 0.00011068]

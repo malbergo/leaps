@@ -1,0 +1,2 @@
+sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
+a_gwg(sqrt),ising,2,"(15, 15)",100,100000,0.5,39.83998441696167,[1057.387    121.34722],[0.02114774 0.00242694],[26.540848  3.045865],[0.00528693 0.00060674]

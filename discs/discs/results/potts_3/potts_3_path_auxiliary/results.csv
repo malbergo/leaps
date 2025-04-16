@@ -1,0 +1,2 @@
+sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
+a_path_auxiliary(sqrt),potts,3,"(15, 15)",100,100000,0.5,16.564084768295288,[42.967304 76.75852 ],[0.00085935 0.00153517],[2.5940042 4.634033 ],[0.00021484 0.00038379]

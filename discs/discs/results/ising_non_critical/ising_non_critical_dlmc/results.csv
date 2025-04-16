@@ -1,0 +1,2 @@
+sampler,model,num_categories,shape,batch_size,chain_length,ess_ratio,Time,ESS,ESS_M-H,ESS_T,ESS_EE
+a_dlmc(sqrt),ising,2,"(15, 15)",100,100000,0.5,6.306829214096069,[1854.2301   186.53217],[0.0370846  0.00373064],[294.00354   29.576218],[0.00927115 0.00093266]
