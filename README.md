@@ -20,6 +20,11 @@ This is the official implementation of [LEAPS: A discrete neural sampler via loc
 ```python main.py --yml=ymls/potts_config.yml```
 
 
+<figure>
+  <img src="figures/ising_magnetization_and_corr.pdf" alt="Ising lattice snapshot" />
+  <figcaption><strong>Figure 1.</strong> A sample spin configuration at criticality.</figcaption>
+</figure>
+
 ## Run experiments for different energy model
 
 To run experiments on a different energy model, you need to define an annealing path $\rho_t$. You can use the examples in `src/modules/rhot.py` for the Ising model and the Potts model as guiding examples.
