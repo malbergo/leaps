@@ -20,9 +20,18 @@ This is the official implementation of [LEAPS: A discrete neural sampler via loc
 ```python main.py --yml=ymls/potts_config.yml```
 
 
-<figure>
-  <img src="figures/ising_magnetization_and_corr.pdf" alt="Ising lattice snapshot" />
-  <figcaption><strong>Figure 1.</strong> A sample spin configuration at criticality.</figcaption>
+<figure align="center">
+  <object 
+    data="figures/ising_magnetization_and_corr.pdf" 
+    type="application/pdf" 
+    width="100%" 
+    height="600px">
+    <p>
+      Your browser doesn’t support embedded PDFs.
+      <a href="docs/LEAPS_paper.pdf">Download the PDF instead</a>.
+    </p>
+  </object>
+  <figcaption>Figure: The full LEAPS paper in PDF form.</figcaption>
 </figure>
 
 ## Run experiments for different energy model
