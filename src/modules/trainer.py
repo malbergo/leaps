@@ -137,9 +137,9 @@ class IsingLightningModule(L.LightningModule):
             if self.use_buffer:
                 if len(self.buffer)>=self.max_buffer_size:
                     self.buffer.pop(0)
-                self.buffer.append((sigmas.cpu(),As.cpu(),k))
+                self.buffer.append((sigmas.cpu(),As.cpu(),k, ts))
         else:
-            sigmas, As, k = random.choice(self.buffer)
+            sigmas, As, k, ts = random.choice(self.buffer)
             sigmas = sigmas.to(self.device)
             As = As.to(self.device)
         
