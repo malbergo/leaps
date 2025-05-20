@@ -137,11 +137,12 @@ class IsingLightningModule(L.LightningModule):
             if self.use_buffer:
                 if len(self.buffer)>=self.max_buffer_size:
                     self.buffer.pop(0)
-                self.buffer.append((sigmas.cpu(),As.cpu(),k, ts))
+                self.buffer.append((sigmas.cpu(),As.cpu(), k, ts.detach().cpu()))
         else:
             sigmas, As, k, ts = random.choice(self.buffer)
             sigmas = sigmas.to(self.device)
             As = As.to(self.device)
+            ts = ts.to(self.device)
         
         sub_bs    = self.config.bs_for_loss_per_gpu
         walk_idxs = torch.randint(low=0, high=self.config.bs_per_gpu, size=(sub_bs,))#.to(device)
